@@ -85,8 +85,11 @@ body{
   width:100%;margin-top:12px;padding:.75rem;
   background:#e05c3a;color:#fff;border:none;border-radius:12px;
   font-size:15px;font-weight:700;cursor:pointer;display:none;font-family:inherit;
+  transition:background .2s,opacity .2s;
 }
-.next-btn:hover{background:#c04a2c;}
+.next-btn:hover:not(:disabled){background:#c04a2c;}
+.next-btn:disabled{background:#ccc;color:#888;cursor:not-allowed;opacity:.85;}
+.result-feedback{font-size:16px;line-height:1.7;color:#444;margin-bottom:28px;padding:0 4px;}
 
 /* ===== 结算界面 ===== */
 #resultScreen{justify-content:center;}
@@ -181,40 +184,51 @@ body{
       <div class="result-denom">/5</div>
     </div>
     <div class="result-label">答对题数</div>
+    <div class="result-feedback" id="rFeedback"></div>
     <button class="retry-btn" id="retryBtn">🔁 重新作答</button>
   </div>
 </div>
 
 <script>
 var Q=[
-  {img:"1.png",
-  guide:"城市智能客服中心报警了！语音播报模块乱了，快帮它找到正确技术！",
+  {img:"q1-voice.jpg",alt:"银行 AI 客服语音播报场景",
+   guide:"城市智能客服中心报警了！语音播报模块乱了，快帮它找到正确技术！",
    q:"第一关：银行 AI 客服处理完问题后，将文字回复转换成自然语音播报给用户。这主要依赖哪项技术？",
    opts:["声纹识别","语音识别","语音合成","情感分析"],ans:2,
    tip:"将文字转换为自然语音输出，正是语音合成的核心能力。"},
-  {img:"4.jpg",
-   guide:"城市智能手机安全模块需要校正，快来帮它识别正确技术！！",
+  {img:"q2-face.jpg",alt:"手机人脸识别解锁场景",
+   guide:"城市智能手机安全模块需要校正，快来帮它识别正确技术！",
    q:"第二关：小明早上拿起手机，只是看了一眼屏幕，手机就自动解锁了。这主要依赖哪项技术？",
    opts:["人脸识别","图像分类","目标检测","声纹识别"],ans:0,
    tip:"通过面部特征识别身份并解锁，属于人脸识别技术。"},
-  {img:"2.jpg",
-   guide:"智能停车场系统遇到识别障碍，车位管理AI需要协助！",
+  {img:"q3-detection.jpg",alt:"停车场 AI 车辆检测场景",
+   guide:"智能停车场系统遇到识别障碍，车位管理 AI 需要协助！",
    q:"第三关：在停车场里，AI 摄像头不仅发现了汽车，还用方框标出了每辆车的位置。这主要依赖哪项技术？",
    opts:["图像分类","目标检测","语音识别","路线规划"],ans:1,
    tip:"目标检测不仅会认出汽车，还能准确找到汽车的位置并用方框标出来。"},
-  {img:"3.jpeg",
+  {img:"q4-route.jpg",alt:"配送无人机路线规划场景",
    guide:"城市物流无人机全部停飞！快帮配送中心找到正确技术！",
    q:"第四关：一辆配送无人机接到送货任务后，自动计算出最快、最安全的飞行路线，并顺利到达目的地。这主要依赖哪项技术？",
-   opts:["图像分类","语音合成","路线规划","情感分类"],ans:2,
+   opts:["图像分类","语音合成","路线规划","情感分析"],ans:2,
    tip:"从起点到终点自动计算最优路线并导航，是路径规划技术的核心体现。"},
-  {img:"5.jpg",
+  {img:"q5-classify.jpg",alt:"动物园 AI 拍照识物场景",
    guide:"快看！那是什么动物！",
    q:"第五关：在动物园里，小乐用 AI 拍照识物功能拍摄了一张长颈鹿的照片。AI 判断照片中的动物是“长颈鹿”。这主要依赖哪项技术？",
    opts:["姿态估计","图像分类","图像分割","图像生成"],ans:1,
    tip:"AI 的任务是判断照片里的动物属于哪一类，属于图像分类技术。"}
 ];
 
-var cur=0,score=0,answered=false;
+var WRONG_NEXT_DELAY=3;
+var RESULT_TIERS=[
+  {emoji:"📖",feedback:"别灰心！回顾一下语音、视觉等 AI 技术的基础概念，再挑战一次吧！"},
+  {emoji:"📖",feedback:"还有很大进步空间，建议重温每道题的解析，分清不同技术的用途。"},
+  {emoji:"💪",feedback:"已经有一点基础了！再复习一下视觉识别和目标检测的区别，你会更强。"},
+  {emoji:"🌟",feedback:"再复习一下视觉识别相关知识点，区分「分类」和「检测」，下次一定能拿更高分！"},
+  {emoji:"🌟",feedback:"非常棒！大部分 AI 技术你都掌握了，再巩固一下语音和路径规划就完美了。"},
+  {emoji:"🏆",feedback:"AI 小达人！你已经能准确识别各种场景背后的 AI 技术，城市系统全部修复！"}
+];
+
+var cur=0,score=0,answered=false,nextTimer=null;
 function $(id){return document.getElementById(id);}
 
 function showScreen(id){
@@ -224,21 +238,37 @@ function showScreen(id){
 }
 
 $('startBtn').addEventListener('click',function(){
+  clearNextTimer();
   cur=0;score=0;answered=false;
   showScreen('gameScreen');
   loadQ();
 });
 $('nextBtn').addEventListener('click',function(){
+  if($('nextBtn').disabled)return;
+  clearNextTimer();
   cur++;
   if(cur<Q.length){loadQ();}else{showResult();}
 });
 $('retryBtn').addEventListener('click',function(){
+  clearNextTimer();
   cur=0;score=0;answered=false;
   showScreen('gameScreen');
   loadQ();
 });
 
+function clearNextTimer(){
+  if(nextTimer){clearInterval(nextTimer);nextTimer=null;}
+}
+
+function setNextBtn(enabled,text){
+  var btn=$('nextBtn');
+  btn.disabled=!enabled;
+  btn.textContent=text;
+  btn.style.display='block';
+}
+
 function loadQ(){
+  clearNextTimer();
   var q=Q[cur];
   answered=false;
   $('level').textContent=cur+1;
@@ -246,18 +276,24 @@ function loadQ(){
   $('progBar').style.width=((cur+1)/Q.length*100)+'%';
   $('guideTxt').textContent=q.guide;
   $('sceneImg').src=q.img;
+  $('sceneImg').alt=q.alt||'场景图';
   $('qText').textContent=q.q;
   $('explain').style.display='none';
   $('explain').className='explain';
-  $('msg').innerHTML='';
+  $('msg').textContent='';
   $('nextBtn').style.display='none';
-  $('nextBtn').textContent=cur<Q.length-1?'下一关 →':'查看结果 🎉';
+  $('nextBtn').disabled=false;
   var opts=$('opts');
   opts.innerHTML='';
   ['A','B','C','D'].forEach(function(l,i){
     var btn=document.createElement('button');
     btn.className='opt';
-    btn.innerHTML='<span class="L">'+l+'.</span>'+q.opts[i];
+    btn.type='button';
+    var label=document.createElement('span');
+    label.className='L';
+    label.textContent=l+'.';
+    btn.appendChild(label);
+    btn.appendChild(document.createTextNode(q.opts[i]));
     btn.addEventListener('click',function(){pick(btn,i);});
     opts.appendChild(btn);
   });
@@ -271,27 +307,39 @@ function pick(btn,i){
   if(correct)score++;
   document.querySelectorAll('.opt').forEach(function(b){b.disabled=true;});
   var ex=$('explain');
+  var nextLabel=cur<Q.length-1?'下一关 →':'查看结果 🎉';
   if(correct){
     btn.classList.add('ok');
-    $('msg').innerHTML='🎉 太棒了！城市系统已修复！';
+    $('msg').textContent='🎉 太棒了！城市系统已修复！';
     ex.className='explain ok';
     ex.textContent='✅ '+q.tip;
     for(var k=0;k<8;k++)(function(k){setTimeout(createStar,k*100);})(k);
+    setNextBtn(true,nextLabel);
   }else{
     btn.classList.add('no');
     document.querySelectorAll('.opt')[q.ans].classList.add('ok');
-    $('msg').innerHTML='🤖 加油！看看解析再继续～';
+    $('msg').textContent='🤖 加油！先阅读解析，稍后再继续～';
     ex.className='explain no';
     ex.textContent='💡 正确答案是「'+q.opts[q.ans]+'」。'+q.tip;
+    var remain=WRONG_NEXT_DELAY;
+    setNextBtn(false,'请阅读解析（'+remain+' 秒）');
+    nextTimer=setInterval(function(){
+      remain--;
+      if(remain>0){
+        setNextBtn(false,'请阅读解析（'+remain+' 秒）');
+      }else{
+        clearNextTimer();
+        setNextBtn(true,nextLabel);
+      }
+    },1000);
   }
   ex.style.display='block';
   $('score').textContent=score;
-  $('nextBtn').style.display='block';
 }
 
 function createStar(){
   var s=document.createElement('div');
-  s.innerHTML='⭐';s.className='star';
+  s.textContent='⭐';s.className='star';
   s.style.left=(Math.random()*(window.innerWidth-50))+'px';
   s.style.top='50%';
   document.body.appendChild(s);
@@ -299,9 +347,11 @@ function createStar(){
 }
 
 function showResult(){
-  var emoji=['📖','📖','📖','💪','🌟','🌟','🏆'][score];
-  $('rEmoji').textContent=emoji;
+  clearNextTimer();
+  var tier=RESULT_TIERS[score]||RESULT_TIERS[0];
+  $('rEmoji').textContent=tier.emoji;
   $('rScore').textContent=score;
+  $('rFeedback').textContent=tier.feedback;
   showScreen('resultScreen');
 }
 </script>
